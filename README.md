@@ -6,7 +6,7 @@ This is a simple Python bot that reads input from an Excel file, fills out web f
 
 Ensure you have the required packages installed by running:
 
-pip install -r requirements.txt
+'pip install -r requirements.txt'
 
 ## Chromedriver
 
