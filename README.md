@@ -1,4 +1,4 @@
-# RocketbotPruebaTecnica
+# AutomationProject
 
 This is a simple Python bot that reads input from an Excel file, fills out web forms, and sends emails.
 
