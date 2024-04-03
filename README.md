@@ -1,6 +1,6 @@
 # AutomationProject
 
-This is a simple Python bot that reads input from an Excel file, fills out web forms, and sends emails.
+This is a simple Python bot with selenium that reads input from an Excel file, fills out web forms, and sends emails.
 
 ## Installation
 
