@@ -12,6 +12,12 @@ Ensure you have the required packages installed by running:
 
 If need to download Chromedriver. You can find the latest version [here](https://googlechromelabs.github.io/chrome-for-testing/).
 
+# Libraries
+
+The following libraries are used in this project:
+- [openpyxl](https://openpyxl.readthedocs.io/en/stable/)
+- [selenium](https://www.selenium.dev/documentation/en/)
+- [smtplib](https://docs.python.org/3/library/smtplib.html)
 ## Note
 
 Before running the code, please make sure to perform the following replacements in the script:
