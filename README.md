@@ -14,4 +14,6 @@ If need to download the Chromedriver. You can find the latest version [here](htt
 
 ## Note
 
-Please replace the email address with your own and also replace the third-party password for Gmail in the code before running.
+Before running the code, please make sure to perform the following replacements in the script:
+- Replace the email address (line #126) with your own.
+- Replace the third-party password for Gmail (line #143) with your own.
