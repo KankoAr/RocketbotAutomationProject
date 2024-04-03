@@ -10,7 +10,7 @@ Ensure you have the required packages installed by running:
 
 ## Chromedriver
 
-If need to download the Chromedriver. You can find the latest version [here](https://googlechromelabs.github.io/chrome-for-testing/).
+If need to download Chromedriver. You can find the latest version [here](https://googlechromelabs.github.io/chrome-for-testing/).
 
 ## Note
 
