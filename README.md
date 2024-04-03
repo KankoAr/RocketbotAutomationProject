@@ -10,4 +10,4 @@ Ensure you have the required packages installed by running:
 
 ## Chromedriver
 
-For Chrome browser automation, you'll need to download the Chromedriver. You can find the latest version [here](https://googlechromelabs.github.io/chrome-for-testing/).
+If need to download the Chromedriver. You can find the latest version [here](https://googlechromelabs.github.io/chrome-for-testing/).
