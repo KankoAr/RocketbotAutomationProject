@@ -123,7 +123,7 @@ def enviar_correo(proceso, estado, observacion, fecha_compromiso ,correo_respons
     
     try:
         # Configurar los parámetros del correo
-        remitente = 'Tu email' ############ reemplaza con tu email
+        remitente = 'Tu email' ############ reemplaza con tu direccion de Gmail
         destinatario = correo_responsable
         asunto = f'Estado de proceso: {proceso}'
         cuerpo = f"Estado del proceso: {estado}\nObservación: {observacion}\nFecha de compromiso: {fecha_compromiso.strftime('%d/%m/%Y')}"
@@ -140,7 +140,7 @@ def enviar_correo(proceso, estado, observacion, fecha_compromiso ,correo_respons
         servidor_smtp.starttls()
         
         # Autenticarse con el servidor SMTP
-        servidor_smtp.login(remitente, 'tu password') ########### aqui se tiene que poner el password para aplicaciones de terceros de gmail
+        servidor_smtp.login(remitente, 'tu password') ########### aqui se tiene que poner el password para aplicaciones de terceros de Gmail
         
         # Enviar el correo electrónico
         servidor_smtp.send_message(mensaje)
