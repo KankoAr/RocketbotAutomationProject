@@ -14,7 +14,7 @@ This Python script automates the process of reading data from an Excel file, fil
     *   Timestamps for all actions.
     *   Severity levels (INFO, WARNING, ERROR).
     *   Detailed stack traces for errors, aiding in troubleshooting.
-    *   Clear logging of data transformations (e.g., lowercasing for 'proceso', stripping for 'severidad') when matching dropdown options.
+    *   Clear logging of data transformations (e.g., lowercasing for process name values, stripping whitespace for severity values) when matching dropdown options.
 *   **Modular Design:** Code is organized into functions for clarity and reusability.
 
 ## Prerequisites
@@ -56,8 +56,8 @@ Email notifications are sent using credentials specified in a `config.ini` file.
 2.  **Edit `config.ini`:**
     *   Open `config.ini` with a text editor.
     *   Under the `[SMTP]` section:
-        *   Replace `tu_email@gmail.com` with your actual Gmail address.
-        *   Replace `tu_password_de_aplicacion` with your Gmail **App Password**.
+        *   Replace `your_email@gmail.com` with your actual Gmail address.
+        *   Replace `your_app_password` with your Gmail **App Password**.
             *   **Important:** If you have 2-Step Verification enabled on your Gmail account (which is highly recommended), you **must** generate and use an App Password. Do not use your regular Gmail password.
             *   Instructions: [Google Account Help - Sign in with App Passwords](https://support.google.com/accounts/answer/185833)
     *   Example `config.ini` structure:
@@ -73,7 +73,7 @@ Email notifications are sent using credentials specified in a `config.ini` file.
 ### 2. Excel File
 
 *   The script expects an Excel file named `Base Seguimiento Observ Auditoría al_30042021.xlsx` in the same directory.
-*   The structure of this Excel file (column order, sheet name) is implicitly defined in the `procesar_excel` function. Modify the script if your Excel file has a different name or structure.
+*   The structure of this Excel file (column order, sheet name) is implicitly defined in the `process_excel_file` function. Modify the script if your Excel file has a different name or structure.
 
 ## Running the Script
 
