@@ -1,3 +1,2 @@
 openpyxl==3.1.2
 selenium==4.4.3
-smtplib
