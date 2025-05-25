@@ -1,9 +1,11 @@
 import time
 import smtplib
+import logging 
+import configparser
 from openpyxl import load_workbook
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, ElementNotInteractableException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -11,147 +13,256 @@ from selenium.webdriver.support.ui import Select
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-def procesar_excel():
-    
-    try:
-        archivo_excel = "Base Seguimiento Observ Auditoría al_30042021.xlsx"
+def process_excel_file():
+    excel_filepath = "Base Seguimiento Observ Auditoría al_30042021.xlsx" # This filename itself is in Spanish, but it's an external dependency.
+    workbook = None
+    driver = None
 
-        # Abrir el archivo Excel proporcionado
-        wb = load_workbook(archivo_excel)
-        sheet = wb.active
-        
-        # Recorrer las filas del archivo Excel
-        for row in sheet.iter_rows(min_row=2):
-            try:
-                # Obtener los valores de las celdas
-                proceso = row[0].value
-                observacion = row[1].value
-                tipo_riesgo = row[2].value
-                severidad = row[3].value
-                plan_accion = row[4].value
-                fecha_compromiso = row[5].value
-                responsable = row[6].value
-                responsable_area = row[7].value
-                correo_responsable = row[8].value
-                estado = row[9].value
-                
-                # Si el proceso está regularizado, subir información al formulario
-                if estado == 'Regularizado':
-                    subir_informacion(proceso, tipo_riesgo, severidad, responsable, fecha_compromiso, observacion)
-                
-                # Si el proceso está atrasado, enviar correo al responsable
-                elif estado == 'Atrasado':
-                    enviar_correo(proceso, estado, observacion, fecha_compromiso, correo_responsable)
-                
-            except Exception as e:
-                print(f"Error al procesar fila: {e}")
-        
-    except Exception as e:
-        print(f"Error al abrir el archivo Excel: {e}")
-        
-    finally:
-        try:
-            wb.close()
-        except UnboundLocalError:
-            pass
-
-def subir_informacion(proceso, tipo_riesgo, severidad, responsable, fecha_compromiso, observacion):
     try:
-        # Iniciar el navegador Chrome
-        driver = webdriver.Chrome()
-        driver.get("https://roc.myrb.io/s1/forms/M6I8P2PDOZFDBYYG")
+        workbook = load_workbook(excel_filepath)
+        worksheet = workbook.active
         
-        # Completar el formulario con la información
-        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "process")))
-        
-        #1
-        # Convertir proceso a minúsculas ya que se generan conflictos con los desplegables del formulario
-        proceso = proceso.lower()
-        select_element = driver.find_element(By.ID, 'process')
-        select = Select(select_element)
-        
-        for option in select.options:
-            if option.text.lower() == proceso:
-                option.click()
+        needs_webdriver = False
+        for row_values in worksheet.iter_rows(min_row=2, values_only=True):
+            if row_values[9] == 'Regularizado': # status in 10th column (index 9)
+                needs_webdriver = True
                 break
-            
-        #2
-        driver.find_element(By.ID, 'tipo_riesgo').send_keys(tipo_riesgo)
         
-        #3
-        # Elimina los espacios en blanco ya que genera conflictos con el desplegable del formulario
-        severidad_texto = severidad.strip()
-        severidad_dato = driver.find_element(By.ID, 'severidad')
-        severidad_select = Select(severidad_dato)
-        severidad_select.select_by_visible_text(severidad_texto)
+        if needs_webdriver:
+            try:
+                driver = webdriver.Chrome()
+                logging.info("WebDriver initialized.")
+            except Exception as e:
+                logging.error(f"Error initializing WebDriver: {e}", exc_info=True)
+                driver = None 
         
-        #4
-        driver.find_element(By.ID, 'res').send_keys(responsable)
-        #5
-        fecha_formateada = fecha_compromiso.strftime('%d/%m/%Y')
-        driver.find_element(By.ID, 'date').send_keys(fecha_formateada)
-        #6
-        driver.find_element(By.ID, 'obs').send_keys(observacion)
+        for row_idx, current_row_cells in enumerate(worksheet.iter_rows(min_row=2), start=2):
+            process_value_for_log = current_row_cells[0].value 
+            try:
+                process_name = current_row_cells[0].value
+                observation = current_row_cells[1].value
+                risk_type = current_row_cells[2].value
+                severity = current_row_cells[3].value
+                action_plan = current_row_cells[4].value 
+                commitment_date = current_row_cells[5].value
+                responsible_person = current_row_cells[6].value
+                responsible_area = current_row_cells[7].value 
+                responsible_person_email = current_row_cells[8].value
+                status = current_row_cells[9].value
+                
+                if status == 'Regularizado': # This value 'Regularizado' is from the Excel data.
+                    if driver:
+                        logging.info(f"Processing row {row_idx} for web submission: {process_name}")
+                        upload_information_to_form(driver, process_name, risk_type, severity, responsible_person, commitment_date, observation)
+                    else:
+                        logging.warning(f"Skipping web submission for row {row_idx} (process {process_name}) as WebDriver is not available.")
+                elif status == 'Atrasado': # This value 'Atrasado' is from the Excel data.
+                    logging.info(f"Processing row {row_idx} for email: {process_name}")
+                    send_status_email(process_name, status, observation, commitment_date, responsible_person_email)
+            except Exception as e:
+                logging.error(f"Error processing row {row_idx} ({process_value_for_log if process_value_for_log else 'N/A'}): {e}", exc_info=True)
         
-        time.sleep(4)
-        # Click en submit
-        driver.find_element(By.ID, 'submit').click()
-        
-        # Verificación de envío de formulario
-        elemento_alerta = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "alert-success")))
-
-        # Extraer el texto de la alerta
-        texto_alerta = elemento_alerta.text
-
-        # Verificar si el texto contiene "Data sent"
-        if "Data sent" in texto_alerta:
-            # Extraer el ID de la cola
-            id_cola = texto_alerta.split("Queue ID ")[1]
-            print("Se ha enviado la información correctamente. ID de la cola:", id_cola)
-        else:
-            print("No se ha enviado la información correctamente.")
-        
+    except FileNotFoundError as e:
+        logging.error(f"Error: Excel file '{excel_filepath}' not found.", exc_info=True)
     except Exception as e:
-        print(f"Error al subir la información al formulario: {e}")
-        
+        logging.error(f"Error in process_excel_file function before row loop: {e}", exc_info=True)
     finally:
-        # Cerrar el navegador después de 5 segundos
-        time.sleep(5)
-        driver.quit()
+        if workbook:
+            try:
+                workbook.close()
+                logging.info("Excel workbook closed.")
+            except Exception as e:
+                logging.error(f"Error closing workbook: {e}", exc_info=True)
+        if driver:
+            try:
+                driver.quit()
+                logging.info("WebDriver closed.")
+            except Exception as e:
+                logging.error(f"Error closing WebDriver: {e}", exc_info=True)
 
-def enviar_correo(proceso, estado, observacion, fecha_compromiso ,correo_responsable):
-    
+def upload_information_to_form(driver, original_process_name, risk_type, original_severity, responsible_person, commitment_date, observation):
+    process_name_for_logging = original_process_name 
     try:
-        # Configurar los parámetros del correo
-        remitente = 'Tu email' ############ reemplaza con tu direccion de Gmail
-        destinatario = correo_responsable
-        asunto = f'Estado de proceso: {proceso}'
-        cuerpo = f"Estado del proceso: {estado}\nObservación: {observacion}\nFecha de compromiso: {fecha_compromiso.strftime('%d/%m/%Y')}"
+        driver.get("https://roc.myrb.io/s1/forms/M6I8P2PDOZFDBYYG")
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "process")))
+        submission_successful = True
+
+        # 1. Process Dropdown
+        try:
+            process_name_input_str = str(original_process_name) if original_process_name is not None else ""
+            process_name_lower = process_name_input_str.lower()
+            
+            select_element = driver.find_element(By.ID, 'process')
+            select_object = Select(select_element)
+            process_found = False
+            if original_process_name is not None: 
+                for option in select_object.options:
+                    if option.text.lower() == process_name_lower:
+                        option.click()
+                        process_found = True
+                        break
+            
+            if not process_found:
+                available_options = [opt.text for opt in select_object.options]
+                if original_process_name is None:
+                    logging.warning(f"Warning (Process '{process_name_for_logging}'): Input for 'process' was empty/None. No option selected. Available: {available_options}.")
+                else:
+                    log_msg = f"Warning (Process '{process_name_for_logging}'): Option '{process_name_lower}' (normalized from '{original_process_name}') not found in 'process' dropdown."
+                    log_msg += f" Available: {available_options}. Attempting to continue."
+                    logging.warning(log_msg)
+        except (NoSuchElementException, TimeoutException) as e:
+            logging.error(f"Critical error (Process '{process_name_for_logging}'): Could not find or interact with 'process' dropdown: {e}. Skipping this submission.", exc_info=True)
+            return 
+
+        # 2. Risk Type
+        try:
+            if risk_type is not None:
+                 driver.find_element(By.ID, 'tipo_riesgo').send_keys(str(risk_type)) 
+            else:
+                logging.info(f"Information (Process '{process_name_for_logging}'): Field 'risk_type' is empty. Skipping.")
+        except (NoSuchElementException, ElementNotInteractableException, TimeoutException) as e:
+            logging.error(f"Error (Process '{process_name_for_logging}'): Could not interact with 'risk_type' field: {e}. Continuing to next field.", exc_info=True)
+            submission_successful = False
+
+        # 3. Severity Dropdown
+        try:
+            if original_severity is not None:
+                severity_input_str = str(original_severity) 
+                severity_stripped = severity_input_str.strip()
+                severity_element = driver.find_element(By.ID, 'severidad') 
+                severity_select_object = Select(severity_element)
+                severity_found = False
+                for option in severity_select_object.options:
+                    if option.text == severity_stripped: 
+                        option.click()
+                        severity_found = True
+                        break
+                if not severity_found:
+                    available_options = [opt.text for opt in severity_select_object.options]
+                    log_msg = f"Warning (Process '{process_name_for_logging}'): Option '{severity_stripped}' (normalized from '{original_severity}') not found in 'severity' dropdown."
+                    log_msg += f" Available: {available_options}. Attempting to continue."
+                    logging.warning(log_msg)
+            else:
+                logging.info(f"Information (Process '{process_name_for_logging}'): Field 'severity' is empty. Skipping.")
+        except (NoSuchElementException, ElementNotInteractableException, TimeoutException) as e:
+            logging.error(f"Error (Process '{process_name_for_logging}'): Could not interact with 'severity' dropdown: {e}. Continuing to next field.", exc_info=True)
+            submission_successful = False
+
+        # 4. Responsible Person
+        try:
+            if responsible_person is not None:
+                driver.find_element(By.ID, 'res').send_keys(str(responsible_person)) 
+            else:
+                logging.info(f"Information (Process '{process_name_for_logging}'): Field 'responsible_person' is empty. Skipping.")
+        except (NoSuchElementException, ElementNotInteractableException, TimeoutException) as e:
+            logging.error(f"Error (Process '{process_name_for_logging}'): Could not interact with 'responsible_person' field: {e}. Continuing to next field.", exc_info=True)
+            submission_successful = False
+            
+        # 5. Commitment Date
+        try:
+            if commitment_date is not None and hasattr(commitment_date, 'strftime'):
+                formatted_date = commitment_date.strftime('%d/%m/%Y')
+                driver.find_element(By.ID, 'date').send_keys(formatted_date) 
+            elif commitment_date is not None:
+                logging.warning(f"Warning (Process '{process_name_for_logging}'): commitment_date ('{commitment_date}') is not a valid date object. Sending as text: '{str(commitment_date)}'.")
+                driver.find_element(By.ID, 'date').send_keys(str(commitment_date))
+            else:
+                logging.info(f"Information (Process '{process_name_for_logging}'): Field 'commitment_date' is empty. Skipping.")
+        except (NoSuchElementException, ElementNotInteractableException, TimeoutException) as e:
+            logging.error(f"Error (Process '{process_name_for_logging}'): Could not interact with 'commitment_date' field: {e}. Continuing to next field.", exc_info=True)
+            submission_successful = False
+
+        # 6. Observation
+        try:
+            if observation is not None:
+                driver.find_element(By.ID, 'obs').send_keys(str(observation)) 
+            else:
+                logging.info(f"Information (Process '{process_name_for_logging}'): Field 'observation' is empty. Skipping.")
+        except (NoSuchElementException, ElementNotInteractableException, TimeoutException) as e:
+            logging.error(f"Error (Process '{process_name_for_logging}'): Could not interact with 'observation' field: {e}. Continuing to next field.", exc_info=True)
+            submission_successful = False
+
+        # Click submit
+        try:
+            WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "submit"))).click() 
+        except (TimeoutException, ElementNotInteractableException) as e:
+            logging.error(f"Critical error (Process '{process_name_for_logging}'): Could not click 'submit' button: {e}. Cannot confirm submission.", exc_info=True)
+            submission_successful = False 
+            return 
+
+        if not submission_successful:
+            logging.warning(f"Warning (Process '{process_name_for_logging}'): Errors encountered while filling some fields. Submission may be incomplete or failed.")
+
+        # Verify form submission
+        try:
+            alert_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "alert-success")))
+            alert_text = alert_element.text.strip()
+
+            if "Data sent" in alert_text:
+                if "Queue ID " in alert_text:
+                    try:
+                        queue_id = alert_text.split("Queue ID ")[1].strip()
+                        logging.info(f"Data for '{process_name_for_logging}' sent successfully. Queue ID: {queue_id}")
+                    except IndexError:
+                        logging.warning(f"Data for '{process_name_for_logging}' sent. 'Queue ID ' found, but ID could not be extracted. Full alert: '{alert_text}'")
+                else: 
+                    logging.warning(f"Data for '{process_name_for_logging}' sent, but Queue ID format not recognized. Full alert: '{alert_text}'")
+            else: 
+                logging.warning(f"Could not confirm submission for '{process_name_for_logging}' with 'Data sent'. Alert: {alert_text}")
+        except TimeoutException:
+            logging.error(f"Error (Process '{process_name_for_logging}'): Confirmation alert not found after submitting form.", exc_info=True)
+        except Exception as e: 
+            logging.error(f"Unexpected error during submission verification for '{process_name_for_logging}': {e}. Alert text (if available): '{alert_text if 'alert_text' in locals() else 'Not available'}'", exc_info=True)
+
+    except Exception as e: 
+        logging.error(f"General error during form submission for '{process_name_for_logging}': {e}", exc_info=True)
+
+def send_status_email(process_name, status, observation, commitment_date, recipient_email):
+    config = configparser.ConfigParser()
+    try:
+        if not config.read('config.ini'):
+            logging.error("Error: 'config.ini' file not found. Please create one from 'config_example.ini' and fill in your credentials.")
+            return 
+
+        sender_email = config.get('SMTP', 'email')
+        sender_password = config.get('SMTP', 'password')
+
+        if not sender_email or not sender_password or sender_email == "tu_email@gmail.com" or sender_password == "tu_password_de_aplicacion":
+            logging.error("Error: SMTP credentials not configured or are default values in 'config.ini'. Please update the file.") # 'tu_email@gmail.com' and 'tu_password_de_aplicacion' are from config_example.ini, should remain.
+            return 
+
+        email_subject = f'Process Status: {process_name}' # Translated
+        date_string = commitment_date.strftime('%d/%m/%Y') if hasattr(commitment_date, 'strftime') else str(commitment_date)
+        email_body = f"Process Status: {status}\nObservation: {observation}\nCommitment Date: {date_string}" # Translated
         
-        # Crear el mensaje de correo
-        mensaje = MIMEMultipart()
-        mensaje['From'] = remitente
-        mensaje['To'] = destinatario
-        mensaje['Subject'] = asunto
-        mensaje.attach(MIMEText(cuerpo, 'plain'))
+        email_message = MIMEMultipart()
+        email_message['From'] = sender_email
+        email_message['To'] = recipient_email
+        email_message['Subject'] = email_subject
+        email_message.attach(MIMEText(email_body, 'plain'))
         
-        # Iniciar conexión con el servidor SMTP de Gmail
-        servidor_smtp = smtplib.SMTP('smtp.gmail.com', 587)
-        servidor_smtp.starttls()
+        smtp_server = smtplib.SMTP('smtp.gmail.com', 587)
+        smtp_server.starttls()
+        smtp_server.login(sender_email, sender_password)
+        smtp_server.send_message(email_message)
+        smtp_server.quit()
         
-        # Autenticarse con el servidor SMTP
-        servidor_smtp.login(remitente, 'tu password') ########### aqui se tiene que poner el password para aplicaciones de terceros de Gmail
-        
-        # Enviar el correo electrónico
-        servidor_smtp.send_message(mensaje)
-        
-        # Cerrar la conexión con el servidor SMTP
-        servidor_smtp.quit()
-        
-        print("Correo enviado exitosamente a", destinatario)
+        logging.info(f"Email sent successfully to {recipient_email} for process '{process_name}'")
+    except FileNotFoundError: 
+        logging.error("Error: 'config.ini' file not found. Please create one from 'config_example.ini' and fill in your credentials.", exc_info=True)
+    except (configparser.NoSectionError, configparser.NoOptionError) as e:
+        logging.error(f"Configuration error in 'config.ini': {e}. Ensure [SMTP] section and 'email', 'password' options exist.", exc_info=True)
+    except smtplib.SMTPAuthenticationError as e:
+        logging.error(f"SMTP authentication error for process '{process_name}'. Verify credentials in 'config.ini'.", exc_info=True)
     except Exception as e:
-        print(f"Error al enviar el correo electrónico: {e}")
+        logging.error(f"Error sending email for process '{process_name}': {e}", exc_info=True)
 
 if __name__ == "__main__":
-    procesar_excel()
-    print("El programa ha finalizado la carga de formularios y envio de emails")
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(module)s - %(funcName)s - %(message)s',
+        handlers=[logging.StreamHandler()]
+    )
+    process_excel_file()
+    logging.info("Program has finished processing forms and sending emails.") # Translated
+```
